@@ -14,8 +14,7 @@ int main(int argc, char *argv[])
   {
     char upper = (char)(strchr(hex, argv[1][j]) - hex);
     char lower = (char)(strchr(hex, argv[1][j + 1]) - hex);
-    char byte = upper<<4;
-    byte |= lower;
+    char byte = upper<<4 | lower;
     write(1, &byte, 1);
   }
   write(1, "\n", 1);
