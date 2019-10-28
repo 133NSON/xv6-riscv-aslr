@@ -5,7 +5,7 @@
 // demonstrate buffer overflow
 // input:
 // AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-// (67 A's)
+// (68 A's)
 
 int main(int argc, char **argv)
 {
@@ -17,9 +17,9 @@ int main(int argc, char **argv)
 
     if(modified != 0) {
         printf("you have changed the 'modified' variable\n");
-        return 0;
+        exit(0);
     } else {
         printf("Try again?\n");
-        return -1;
+        exit(-1);
     }
 }
