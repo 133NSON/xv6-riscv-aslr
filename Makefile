@@ -147,7 +147,8 @@ UPROGS=\
 	$U/_crashtest\
 	$U/_alloctest\
 	$U/_xecho\
-	$U/_overflow1
+	$U/_overflow1\
+	$U/_rng\
 
 fs.img: mkfs/mkfs README user/xargstest.sh $(UPROGS)
 	mkfs/mkfs fs.img README user/xargstest.sh $(UPROGS)

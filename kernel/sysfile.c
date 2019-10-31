@@ -501,3 +501,45 @@ sys_crash(void)
   crash_op(ip->dev, crash);
   return 0;
 }
+
+static unsigned random_seed = 1;
+static int present = 0;
+
+
+unsigned lcg_parkmiller(unsigned *state)
+{
+
+    const unsigned N = 0x7fffffff;
+    const unsigned G = 48271u;
+    unsigned div = *state / (N / G);  /* max : 2,147,483,646 / 44,488 = 48,271 */
+    unsigned rem = *state % (N / G);  /* max : 2,147,483,646 % 44,488 = 44,487 */
+
+    unsigned a = rem * G;        /* max : 44,487 * 48,271 = 2,147,431,977 */
+    unsigned b = div * (N % G);  /* max : 48,271 * 3,399 = 164,073,129 */
+
+    return *state = (a > b) ? (a - b) : (a + (N - b));
+}
+
+unsigned next_random(int start, int end) {
+    return (lcg_parkmiller(&random_seed) % (end-start))+start;
+}
+uint64 sys_random(void){
+
+    int start, end;
+
+
+    if(argint(0, &start) < 0 || argint(1, &end) < 0)
+        return -1;
+
+    if(present == 1){
+        return next_random(start, end);
+    }
+    uint * random_addr = &random_seed;
+    *random_addr = hashticks;
+    present = 1;
+    return next_random(start, end);
+}
+
+
+
+

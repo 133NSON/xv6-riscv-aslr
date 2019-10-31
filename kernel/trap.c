@@ -6,8 +6,12 @@
 #include "proc.h"
 #include "defs.h"
 
+#define STORED_TICKS 5
+
+int pticks[STORED_TICKS];
 struct spinlock tickslock;
 uint ticks;
+uint hashticks;
 
 extern char trampoline[], uservec[], userret[];
 
@@ -133,10 +137,17 @@ usertrapret(void)
 void 
 kerneltrap()
 {
+
   int which_dev = 0;
   uint64 sepc = r_sepc();
   uint64 sstatus = r_sstatus();
   uint64 scause = r_scause();
+
+  for(int i = 0; i < (STORED_TICKS-1); i++){
+      pticks[i] = pticks[i+1];
+  }
+  pticks[STORED_TICKS-1] = ticks;
+  hashticks += ticks;
   
   if((sstatus & SSTATUS_SPP) == 0)
     panic("kerneltrap: not from supervisor mode");
