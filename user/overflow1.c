@@ -16,10 +16,10 @@ int main(int argc, char **argv)
     gets(buffer, 100);
 
     if(modified != 0) {
-        printf("you have changed the 'modified' variable\n");
+        printf("success");
         exit(0);
     } else {
-        printf("Try again?\n");
+        printf("failed");
         exit(-1);
     }
 }
