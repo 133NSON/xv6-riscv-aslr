@@ -523,14 +523,8 @@ unsigned lcg_parkmiller(unsigned *state)
 unsigned next_random(int start, int end) {
     return (lcg_parkmiller(&random_seed) % (end-start))+start;
 }
-uint64 sys_random(void){
 
-    int start, end;
-
-
-    if(argint(0, &start) < 0 || argint(1, &end) < 0)
-        return -1;
-
+uint64 random(int start, int end) {
     if(present == 1){
         return next_random(start, end);
     }
@@ -540,6 +534,12 @@ uint64 sys_random(void){
     return next_random(start, end);
 }
 
+uint64 sys_random(void){
 
+    int start, end;
 
+    if(argint(0, &start) < 0 || argint(1, &end) < 0)
+        return -1;
 
+    return random(start, end);
+}
