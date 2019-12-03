@@ -7,11 +7,14 @@
 #include "defs.h"
 #include "elf.h"
 
+uint64 random(int, int);
+
 static int loadseg(pde_t *pgdir, uint64 addr, struct inode *ip, uint offset, uint sz);
 
 int
 exec(char *path, char **argv)
 {
+  printf("exec %s: ", path);
   char *s, *last;
   int i, off;
   uint64 argc, sz, sp, ustack[MAXARG+1], stackbase;
@@ -35,27 +38,43 @@ exec(char *path, char **argv)
   if(elf.magic != ELF_MAGIC)
     goto bad;
 
+  // print elf type
+  if(elf.type == 2)
+    printf("loading executable elf...\n");
+  if(elf.type == 3)
+    printf("loading dynamic elf\n");
+
   if((pagetable = proc_pagetable(p)) == 0)
     goto bad;
 
   // Load program into memory.
+  uint64 load_offset = 0 * PGSIZE; // must be multiple of PGSIZE
+  printf("load offset: 0x%x\n", load_offset);
+
   sz = 0;
+  uvmalloc(pagetable, 0, load_offset);
   for(i=0, off=elf.phoff; i<elf.phnum; i++, off+=sizeof(ph)){
-    if(readi(ip, 0, (uint64)&ph, off, sizeof(ph)) != sizeof(ph))
+    if(readi(ip, 0, (uint64)&ph, off, sizeof(ph)) != sizeof(ph)) {
+      printf("exec: readi error\n");
       goto bad;
+    }
+    ph.vaddr = PGROUNDUP(ph.vaddr); // round up vaddr
     if(ph.type != ELF_PROG_LOAD)
       continue;
-    if(ph.memsz < ph.filesz)
+    if(ph.memsz < ph.filesz) {
+      printf("exec: memsz smaller than filesz error\n");
       goto bad;
-    if(ph.vaddr + ph.memsz < ph.vaddr)
+    }
+    if((sz = uvmalloc(pagetable, sz + load_offset, ph.vaddr + ph.memsz + load_offset)) == 0) {
+      printf("exec: uvmalloc error\n");
       goto bad;
-    if((sz = uvmalloc(pagetable, sz, ph.vaddr + ph.memsz)) == 0)
+    }
+    if(loadseg(pagetable, ph.vaddr + load_offset, ip, ph.off, ph.filesz) < 0) {
+      printf("exec: loadseg error\n");
       goto bad;
-    if(ph.vaddr % PGSIZE != 0)
-      goto bad;
-    if(loadseg(pagetable, ph.vaddr, ip, ph.off, ph.filesz) < 0)
-      goto bad;
+    }
   }
+  // sz += load_offset;
   iunlockput(ip);
   end_op(ROOTDEV);
   ip = 0;
@@ -109,9 +128,10 @@ exec(char *path, char **argv)
   oldpagetable = p->pagetable;
   p->pagetable = pagetable;
   p->sz = sz;
-  p->tf->epc = elf.entry;  // initial program counter = main
+  p->tf->epc = elf.entry + load_offset;  // initial program counter = main
   p->tf->sp = sp; // initial stack pointer
   proc_freepagetable(oldpagetable, oldsz);
+  printf("argc: %d", argc);
   return argc; // this ends up in a0, the first argument to main(argc, argv)
 
  bad:
@@ -134,18 +154,26 @@ loadseg(pagetable_t pagetable, uint64 va, struct inode *ip, uint offset, uint sz
   uint i, n;
   uint64 pa;
 
-  if((va % PGSIZE) != 0)
-    panic("loadseg: va must be page aligned");
+  uint64 pg_offset = va - PGROUNDDOWN(va);
 
-  for(i = 0; i < sz; i += PGSIZE){
-    pa = walkaddr(pagetable, va + i);
+  // manually fill the first page, which might not be page aligned
+  pa = walkaddr(pagetable, PGROUNDDOWN(va));
+  if (pa == 0)
+    panic("loadseg: address should exist");
+  n = (sz < PGSIZE)? sz : PGSIZE;
+  if(readi(ip, 0, (uint64)pa + pg_offset, offset, n) != n)
+    return -1;
+
+  // use for loop for subsequent pages
+  for(i = PGSIZE; i < sz; i += PGSIZE){
+    pa = walkaddr(pagetable, PGROUNDDOWN(va) + i);
     if(pa == 0)
       panic("loadseg: address should exist");
     if(sz - i < PGSIZE)
       n = sz - i;
     else
       n = PGSIZE;
-    if(readi(ip, 0, (uint64)pa, offset+i, n) != n)
+    if(readi(ip, 0, (uint64)pa, offset-pg_offset+i, n) != n)
       return -1;
   }
   
