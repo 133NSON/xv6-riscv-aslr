@@ -11,6 +11,8 @@ uint64 random(int, int);
 
 static int loadseg(pde_t *pgdir, uint64 addr, struct inode *ip, uint offset, uint sz);
 
+int readsh(struct secthdr*, struct inode*, int);
+
 int
 exec(char *path, char **argv)
 {
@@ -21,6 +23,7 @@ exec(char *path, char **argv)
   struct elfhdr elf;
   struct inode *ip;
   struct proghdr ph;
+  struct secthdr sh;
   pagetable_t pagetable = 0, oldpagetable;
   struct proc *p = myproc();
 
@@ -47,11 +50,42 @@ exec(char *path, char **argv)
   if((pagetable = proc_pagetable(p)) == 0)
     goto bad;
 
+  sz = 0;
+  struct elfrel relocation;
+  // Get rela sections
+  printf("%d-byte Section Headers\n", elf.shentsize);
+  for(i=0, off=elf.shoff; i<elf.shnum; i++, off += elf.shentsize) {
+    if (readi(ip, 0, (uint64)&sh, off, elf.shentsize) != elf.shentsize) {
+      printf("exec: section readi error on section %d\n", i);
+      goto bad;
+    }
+    printf("addr: 0x%x\n", sh.addralign);
+    int not_rela = (sh.type ^ ELF_SECT_TYPE_RELA);
+    if (!not_rela) {
+      // read relocation record
+      printf("found relocation section: %x, %x\n", sh.entsize, sh.size);
+      for (int sectoff = 0; sectoff < sh.size; sectoff += 24) {
+        int size = readi(
+          ip,
+          0,
+          (uint64)&relocation,
+          sh.offset + sectoff,
+          24);
+        printf(
+          "reloc: 0x%x, 0x%x, 0x%x\n",
+          relocation.r_offset,
+          relocation.r_info,
+          relocation.r_addend);
+        if (size != sizeof(struct elfrel))
+          goto bad;
+      }
+    }
+  }
+
   // Load program into memory.
   uint64 load_offset = 0 * PGSIZE; // must be multiple of PGSIZE
   printf("load offset: 0x%x\n", load_offset);
 
-  sz = 0;
   uvmalloc(pagetable, 0, load_offset);
   for(i=0, off=elf.phoff; i<elf.phnum; i++, off+=sizeof(ph)){
     if(readi(ip, 0, (uint64)&ph, off, sizeof(ph)) != sizeof(ph)) {
@@ -131,7 +165,7 @@ exec(char *path, char **argv)
   p->tf->epc = elf.entry + load_offset;  // initial program counter = main
   p->tf->sp = sp; // initial stack pointer
   proc_freepagetable(oldpagetable, oldsz);
-  printf("argc: %d", argc);
+  printf("argc: %d\n", argc);
   return argc; // this ends up in a0, the first argument to main(argc, argv)
 
  bad:
