@@ -52,7 +52,10 @@ struct elfrel {
   uint64 r_offset;
   uint64 r_info;
   uint64 r_addend;
-};
+} __attribute__((packed));
+#define ELF64_R_SYM(i)    ((i)>>32)
+#define ELF64_R_TYPE(i)   ((i)&0xffffffffL)
+#define ELF64_R_INFO(s,t) (((s)<<32)+((t)&0xffffffffL))
 
 // Values for Proghdr type
 #define ELF_PROG_LOAD           1
@@ -64,3 +67,6 @@ struct elfrel {
 
 // Types for Section header
 #define ELF_SECT_TYPE_RELA      0x4
+
+// Types of Relocations
+#define R_RISCV_JUMP_SLOT       0x5
