@@ -51,31 +51,65 @@ exec(char *path, char **argv)
     goto bad;
 
   sz = 0;
-  struct elfrel relocation;
-  // Get rela sections
-  printf("%d-byte Section Headers\n", elf.shentsize);
+
+  // Get symbol table
+  struct elfsym symbol;
+  uint64 symboladdrs[100] = {0};
+  uint currentsymbol = 0;
   for(i=0, off=elf.shoff; i<elf.shnum; i++, off += elf.shentsize) {
     if (readi(ip, 0, (uint64)&sh, off, elf.shentsize) != elf.shentsize) {
       printf("exec: section readi error on section %d\n", i);
       goto bad;
     }
-    printf("addr: 0x%x\n", sh.addralign);
+    int not_dynsym = (sh.type ^ ELF_SECT_TYPE_DYNSYM);
+    if (!not_dynsym) {
+      // found section header for dynamic symbol table
+      // read through each dynamic symbol
+      printf("%d bytes\n", sh.entsize);
+      for (int sectoff = 0; sectoff < sh.size; sectoff += sh.entsize) {
+        int size = readi(
+          ip,
+          0,
+          (uint64)&symbol,
+          sh.offset + sectoff,
+          sh.entsize);
+        printf(
+          "sym a:0x%x, b: 0x%x, c: 0x%x\n",
+          symbol.a,
+          symbol.addr,
+          symbol.c);
+        symboladdrs[currentsymbol++] = symbol.addr;
+        if (size != sizeof(struct elfrel))
+          goto bad;
+      }
+    }
+  }
+
+
+  struct elfrel relocation;
+  // Get Section Headers
+  for(i=0, off=elf.shoff; i<elf.shnum; i++, off += elf.shentsize) {
+    if (readi(ip, 0, (uint64)&sh, off, elf.shentsize) != elf.shentsize) {
+      printf("exec: section readi error on section %d\n", i);
+      goto bad;
+    }
     int not_rela = (sh.type ^ ELF_SECT_TYPE_RELA);
     if (!not_rela) {
-      // read relocation record
-      printf("found relocation section: %x, %x\n", sh.entsize, sh.size);
-      for (int sectoff = 0; sectoff < sh.size; sectoff += 24) {
+      // found section header for relocations
+      // read through each relocation
+      for (int sectoff = 0; sectoff < sh.size; sectoff += sh.entsize) {
         int size = readi(
           ip,
           0,
           (uint64)&relocation,
           sh.offset + sectoff,
-          24);
+          sh.entsize);
         printf(
-          "reloc: 0x%x, 0x%x, 0x%x\n",
+          "reloc offset:0x%x, type: 0x%x, symbol: 0x%x, addr: 0x%x\n",
           relocation.r_offset,
-          relocation.r_info,
-          relocation.r_addend);
+          ELF64_R_TYPE(relocation.r_info),
+          ELF64_R_SYM(relocation.r_info),
+          symboladdrs[ELF64_R_SYM(relocation.r_info)]);
         if (size != sizeof(struct elfrel))
           goto bad;
       }

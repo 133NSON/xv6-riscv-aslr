@@ -47,6 +47,13 @@ struct secthdr {
   uint64 entsize;
 } __attribute__((packed));
 
+// Symbol Table Entries
+struct elfsym {
+  uint64 a;
+  uint64 addr;
+  uint64 c;
+};
+
 // Relocations
 struct elfrel {
   uint64 r_offset;
@@ -66,7 +73,8 @@ struct elfrel {
 #define ELF_PROG_FLAG_READ      4
 
 // Types for Section header
-#define ELF_SECT_TYPE_RELA      0x4
+#define ELF_SECT_TYPE_DYNSYM    11
+#define ELF_SECT_TYPE_RELA      4
 
 // Types of Relocations
-#define R_RISCV_JUMP_SLOT       0x5
+#define R_RISCV_JUMP_SLOT       5
