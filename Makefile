@@ -107,9 +107,10 @@ $U/_forktest: $U/forktest.o $(ULIB)
 	$(LD) $(LDFLAGS) -N -e main -Ttext 0 -o $U/_forktest $U/forktest.o $U/ulib.o $U/usys.o
 	$(OBJDUMP) -S $U/_forktest > $U/forktest.asm
 
-$U/_uthread: $U/uthread.o $U/uthread_switch.o $(ULIB)
-	$(LD) $(LDFLAGS) -N -e main -Ttext 0 -o $U/_uthread $U/uthread.o $U/uthread_switch.o $(ULIB)
-	$(OBJDUMP) -S $U/_uthread > $U/uthread.asm
+
+$U/_overflow4: $U/overflow4.o $U/uthread_switch.o $(ULIB)
+	$(LD) $(LDFLAGS) -N -e main -Ttext 0 -o $U/_overflow4 $U/overflow4.o $U/uthread_switch.o $(ULIB)
+	$(OBJDUMP) -S $U/_overflow4 > $U/overflow4.asm
 
 mkfs/mkfs: mkfs/mkfs.c $K/fs.h
 	gcc -Werror -Wall -I. -o mkfs/mkfs mkfs/mkfs.c
@@ -138,7 +139,6 @@ UPROGS=\
 	$U/_wc\
 	$U/_zombie\
 	$U/_cowtest\
-	$U/_uthread\
 	$U/_call\
 	$U/_testsh\
 	$U/_kalloctest\
@@ -151,9 +151,11 @@ UPROGS=\
 	$U/_overflow1\
 	$U/_overflow2\
 	$U/_exploittest\
+	$U/_overflow4\
+	$U/_nsh\
 
-fs.img: mkfs/mkfs README randomize_va_space user/xargstest.sh $(UPROGS)
-	mkfs/mkfs fs.img README randomize_va_space user/xargstest.sh $(UPROGS)
+fs.img: mkfs/mkfs README randomize_va_space user/xargstest.sh exploit $(UPROGS)
+	mkfs/mkfs fs.img README randomize_va_space user/xargstest.sh exploit $(UPROGS)
 
 -include kernel/*.d user/*.d
 

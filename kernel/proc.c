@@ -164,11 +164,11 @@ proc_pagetable(struct proc *p)
   // to/from user space, so not PTE_U.
   mappages(pagetable, TRAMPOLINE, PGSIZE,
            (uint64)trampoline, PTE_R | PTE_X);
+    printf("buf: 0x%x\n", trampoline);
 
   // map the trapframe just below TRAMPOLINE, for trampoline.S.
   mappages(pagetable, TRAPFRAME, PGSIZE,
            (uint64)(p->tf), PTE_R | PTE_W);
-
   return pagetable;
 }
 

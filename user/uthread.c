@@ -63,7 +63,7 @@ thread_schedule(void)
     next_thread->state = RUNNING;
      uthread_switch((uint64) &current_thread, (uint64) &next_thread);
   } else
-    next_thread = 0;
+    next_thread =0;
 }
 
 void 

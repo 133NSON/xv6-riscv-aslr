@@ -6,4 +6,6 @@
 
 	.globl uthread_switch
 uthread_switch:
-	/* YOUR CODE HERE */
+    ld ra, 0(sp)
+    ld a0, 8(sp)
+    ret
