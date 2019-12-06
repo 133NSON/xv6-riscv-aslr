@@ -85,24 +85,24 @@ exec(char *path, char **argv)
     }
   }
 
-  // Load program into memory.
-  uint64 load_offset = 0 * PGSIZE; // must be multiple of PGSIZE
+  // RANDOMNESS IS COMING FROM HERE!
+  uint64 load_offset = random(2, 1000) * PGSIZE;
   printf("load offset: 0x%x\n", load_offset);
 
-  uvmalloc(pagetable, 0, load_offset);
+  // Look through program headers and read in ELF_PROG_LOAD programs into memory
+  sz = uvmalloc(pagetable, 0, load_offset);
   for(i=0, off=elf.phoff; i<elf.phnum; i++, off+=sizeof(ph)){
     if(readi(ip, 0, (uint64)&ph, off, sizeof(ph)) != sizeof(ph)) {
       printf("exec: readi error\n");
       goto bad;
     }
-    // ph.vaddr = PGROUNDDOWN(ph.vaddr); // round up vaddr
     if(ph.type != ELF_PROG_LOAD)
       continue;
     if(ph.memsz < ph.filesz) {
       printf("exec: memsz smaller than filesz error\n");
       goto bad;
     }
-    if((sz = uvmalloc(pagetable, sz + load_offset, ph.vaddr + ph.memsz + load_offset)) == 0) {
+    if((sz = uvmalloc(pagetable, sz, ph.vaddr + ph.memsz + load_offset)) == 0) {
       printf("exec: uvmalloc error\n");
       goto bad;
     }
@@ -112,7 +112,6 @@ exec(char *path, char **argv)
       goto bad;
     }
   }
-  sz += load_offset;
 
   struct elfrel relocation;
   // Get Section Headers
@@ -141,28 +140,38 @@ exec(char *path, char **argv)
           symboladdrs[ELF64_R_SYM(relocation.r_info)]);
         switch (ELF64_R_TYPE(relocation.r_info)) {
           case R_RISCV_RELATIVE:
-            printf("relative\n");
             // get instruction from memory
-            if (copyin(pagetable, (char*)&instr, (uint64)relocation.r_offset, 8) != 0)
+            if (copyin(pagetable, (char*)&instr, (uint64)relocation.r_offset + load_offset, 8) != 0)
               panic("exec: copyin1 relocation");
             printf("read: 0x%x\n", instr);
-            instr = 0x0;
-            if (copyout(pagetable, (uint64)relocation.r_offset, (char*)&instr, 8) != 0)
+            instr = load_offset;
+            if (copyout(pagetable, (uint64)relocation.r_offset + load_offset, (char*)&instr, 8) != 0)
               panic("exec: copyout1 relocation");
             printf("write: 0x%x\n", instr);
             break;
           case R_RISCV_JUMP_SLOT:
-            printf("jump slot\n");
             // get instruction from memory
             instr = 0;
-            if (copyin(pagetable, (char*)&instr, (uint64)relocation.r_offset, 8) != 0)
+            if (copyin(pagetable, (char*)&instr, (uint64)relocation.r_offset + load_offset, 8) != 0)
               panic("exec: copyin2 relocation");
             printf("read: 0x%x\n", instr);
-            instr = symboladdrs[ELF64_R_SYM(relocation.r_info)];
-            if (copyout(pagetable, (uint64)relocation.r_offset, (char*)&instr, 8) != 0)
+            instr = symboladdrs[ELF64_R_SYM(relocation.r_info)] + load_offset;
+            if (copyout(pagetable, (uint64)relocation.r_offset + load_offset, (char*)&instr, 8) != 0)
               panic("exec: copyout2 relocation");
             printf("write: 0x%x\n", instr);
             break;
+          case R_RISCV_64:
+            instr = 0;
+            if (copyin(pagetable, (char*)&instr, (uint64)relocation.r_offset + load_offset, 8) != 0)
+              panic("exec: copyin3 relocation");
+            printf("read: 0x%x\n", instr);
+            instr = symboladdrs[ELF64_R_SYM(relocation.r_info)] + relocation.r_addend + load_offset;
+            if (copyout(pagetable, (uint64)relocation.r_offset + load_offset, (char*)&instr, 8) != 0)
+              panic("exec: copyout3 relocation");
+            printf("write: 0x%x\n", instr);
+            break;
+          default:
+            panic("exec: relocation type not handled");
         }
         if (size != sizeof(struct elfrel))
           goto bad;
@@ -260,7 +269,7 @@ loadseg(pagetable_t pagetable, uint64 va, struct inode *ip, uint offset, uint sz
   // fill the remainder of the page or until there are no bytes left to write
   n = (sz < PGSIZE - pg_offset)? sz : PGSIZE - pg_offset;
   printf("  loadseg va: 0x%x - 0x%x\n", first_va, first_va + PGSIZE);
-  printf("    file offset: 0x%x\n", offset);
+  printf("    file offset: 0x%x, load %d bytes\n", offset, n);
   if(readi(ip, 0, (uint64)pa + pg_offset, offset, n) != n)
     return -1;
   offset += n;

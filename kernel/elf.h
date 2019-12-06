@@ -77,5 +77,6 @@ struct elfrel {
 #define ELF_SECT_TYPE_RELA      4
 
 // Types of Relocations
+#define R_RISCV_64              2
 #define R_RISCV_RELATIVE        3
 #define R_RISCV_JUMP_SLOT       5
