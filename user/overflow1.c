@@ -14,7 +14,7 @@ int main(int argc, char **argv)
     printf("buf: 0x%x\n", &buffer);
 
     modified = 0;
-    gets(buffer, 100);
+    // gets(buffer, 100);
 
     if(modified != 0) {
         printf("success");
