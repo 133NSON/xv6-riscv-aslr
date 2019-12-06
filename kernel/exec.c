@@ -145,9 +145,10 @@ exec(char *path, char **argv)
             if (copyin(pagetable, (char*)&instr, (uint64)relocation.r_offset, 8) != 0)
               panic("exec: copyin1 relocation");
             printf("read: 0x%x\n", instr);
-            instr = 0x1010101010101010;
-            // if (copyout(pagetable, (uint64)relocation.r_offset, (char*)&instr, 8) != 0)
-            //   panic("exec: copyout1 relocation");
+            instr = 0x0;
+            if (copyout(pagetable, (uint64)relocation.r_offset, (char*)&instr, 8) != 0)
+              panic("exec: copyout1 relocation");
+            printf("write: 0x%x\n", instr);
             break;
           case R_RISCV_JUMP_SLOT:
             printf("jump slot\n");
@@ -159,6 +160,7 @@ exec(char *path, char **argv)
             instr = symboladdrs[ELF64_R_SYM(relocation.r_info)];
             if (copyout(pagetable, (uint64)relocation.r_offset, (char*)&instr, 8) != 0)
               panic("exec: copyout2 relocation");
+            printf("write: 0x%x\n", instr);
             break;
         }
         if (size != sizeof(struct elfrel))
@@ -176,7 +178,7 @@ exec(char *path, char **argv)
   // Allocate random number of pages at the next page boundary.
   // Use the last one as the user stack.
   sz = PGROUNDUP(sz);
-  if((sz = uvmalloc(pagetable, sz, sz + random(2, 100)*PGSIZE)) == 0)
+  if((sz = uvmalloc(pagetable, sz, sz + 2*PGSIZE)) == 0)
     goto bad;
   uvmclear(pagetable, sz-2*PGSIZE);
   sp = sz;

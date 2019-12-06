@@ -4,5 +4,6 @@
         "spinlock.h": "c",
         "defs.h": "c",
         "proc.h": "c"
-    }
+    },
+    "search.useIgnoreFiles": false
 }
