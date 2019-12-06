@@ -34,6 +34,23 @@ exec(char *path, char **argv)
 
   begin_op(ROOTDEV);
 
+  // Get randomize_va_space flag
+  int randomize_va_space = 0;
+  char c[2] = {0};
+  if ((ip = namei("randomize_va_space")) == 0) {
+    printf("unable to open randomize_va_space file, default to no randomize\n");
+  } else {
+    ilock(ip);
+    if (readi(ip, 0, (uint64)&c, 0, sizeof(char)) != sizeof(char)) {
+      printf("unable to read randomize_va_space flag, default to no randomize\n");
+    } else {
+      randomize_va_space = (c[0] == '1')? 1 : 0;
+    }
+    iunlockput(ip);
+  }
+  if (DEBUG_MSG)
+    printf("randomize_va_space = %d\n", randomize_va_space);
+
   if((ip = namei(path)) == 0){
     end_op(ROOTDEV);
     return -1;
@@ -45,14 +62,6 @@ exec(char *path, char **argv)
     goto bad;
   if(elf.magic != ELF_MAGIC)
     goto bad;
-
-  // print elf type
-  if (DEBUG_MSG) {
-    if(elf.type == 2)
-      printf("loading executable elf...\n");
-    if(elf.type == 3)
-      printf("loading dynamic elf\n");
-  }
 
   if((pagetable = proc_pagetable(p)) == 0)
     goto bad;
@@ -92,11 +101,11 @@ exec(char *path, char **argv)
   }
 
   // RANDOMNESS IS COMING FROM HERE!
-  uint64 load_offset = random(2, 1000) * PGSIZE;
+  uint64 load_offset = (randomize_va_space)? random(0, 1000) << 4 : 0;
   if (DEBUG_MSG)
     printf("load offset: 0x%x\n", load_offset);
 
-  // Look through program headers and read in ELF_PROG_LOAD programs into memory
+  // Read in ELF_PROG_LOAD programs into memory
   sz = uvmalloc(pagetable, 0, load_offset);
   for(i=0, off=elf.phoff; i<elf.phnum; i++, off+=sizeof(ph)){
     if(readi(ip, 0, (uint64)&ph, off, sizeof(ph)) != sizeof(ph)) {
@@ -202,8 +211,9 @@ exec(char *path, char **argv)
 
   // Allocate random number of pages at the next page boundary.
   // Use the last one as the user stack.
+  int stack_offset = (randomize_va_space)? random(2, 1000) : 2;
   sz = PGROUNDUP(sz);
-  if((sz = uvmalloc(pagetable, sz, sz + 2*PGSIZE)) == 0)
+  if((sz = uvmalloc(pagetable, sz, sz + stack_offset*PGSIZE)) == 0)
     goto bad;
   uvmclear(pagetable, sz-2*PGSIZE);
   sp = sz;
