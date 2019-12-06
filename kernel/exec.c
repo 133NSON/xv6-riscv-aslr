@@ -55,7 +55,7 @@ exec(char *path, char **argv)
 
   // Get symbol table
   struct elfsym symbol;
-  uint64 symboladdrs[100] = {0};
+  uint64 symboladdrs[200] = {0};
   uint currentsymbol = 0;
   for(i=0, off=elf.shoff; i<elf.shnum; i++, off += elf.shentsize) {
     if (readi(ip, 0, (uint64)&sh, off, elf.shentsize) != elf.shentsize) {
@@ -106,7 +106,7 @@ exec(char *path, char **argv)
       printf("exec: uvmalloc error\n");
       goto bad;
     }
-    printf("loading offset 0x%x into vaddr: 0x%x\n", ph.off, ph.vaddr);
+    printf("loading 0x%x bytes from offset 0x%x into vaddr: 0x%x\n", ph.filesz, ph.off, ph.vaddr);
     if(loadseg(pagetable, ph.vaddr + load_offset, ip, ph.off, ph.filesz) < 0) {
       printf("exec: loadseg error\n");
       goto bad;
@@ -125,7 +125,7 @@ exec(char *path, char **argv)
     if (!not_rela) {
       // found section header for relocations
       // read through each relocation
-      for (int sectoff = 0; sectoff < sh.size; sectoff += sh.entsize) {
+      for (int sectoff = 0, relocnum = 1; sectoff < sh.size; sectoff += sh.entsize, relocnum++) {
         int size = readi(
           ip,
           0,
@@ -133,7 +133,8 @@ exec(char *path, char **argv)
           sh.offset + sectoff,
           sh.entsize);
         printf(
-          "reloc offset:0x%x, type: 0x%x, symbol: %d, addr: 0x%x\n",
+          "reloc %d -> offset:0x%x, type: 0x%x, symbol: %d, addr: 0x%x\n",
+          relocnum,
           relocation.r_offset,
           ELF64_R_TYPE(relocation.r_info),
           ELF64_R_SYM(relocation.r_info),
@@ -238,7 +239,6 @@ exec(char *path, char **argv)
 }
 
 // Load a program segment into pagetable at virtual address va.
-// va must be page-aligned
 // and the pages from va to va+sz must already be mapped.
 // Returns 0 on success, -1 on failure.
 static int
@@ -247,27 +247,40 @@ loadseg(pagetable_t pagetable, uint64 va, struct inode *ip, uint offset, uint sz
   uint i, n;
   uint64 pa;
 
-  uint64 pg_offset = va - PGROUNDDOWN(va);
+  // get the positive page offset of the va from the beginning of the page
+  uint64 first_va = PGROUNDDOWN(va);
+  uint64 pg_offset = va - first_va;
 
   // manually fill the first page, which might not be page aligned
-  pa = walkaddr(pagetable, PGROUNDDOWN(va));
+  pa = walkaddr(pagetable, first_va);
   if (pa == 0)
     panic("loadseg: address should exist");
-  n = (sz < PGSIZE)? sz : PGSIZE;
+  // zero the page
+  memset((void*)pa, 0, PGSIZE);
+  // fill the remainder of the page or until there are no bytes left to write
+  n = (sz < PGSIZE - pg_offset)? sz : PGSIZE - pg_offset;
+  printf("  loadseg va: 0x%x - 0x%x\n", first_va, first_va + PGSIZE);
+  printf("    file offset: 0x%x\n", offset);
   if(readi(ip, 0, (uint64)pa + pg_offset, offset, n) != n)
     return -1;
+  offset += n;
+  sz -= n;
 
   // use for loop for subsequent pages
-  for(i = PGSIZE; i < sz; i += PGSIZE){
-    pa = walkaddr(pagetable, PGROUNDDOWN(va) + i);
+  for(i = PGSIZE; sz > 0; i += PGSIZE){
+    printf("  loadseg va: 0x%x - 0x%x\n", first_va + i, first_va + i + PGSIZE);
+    pa = walkaddr(pagetable, first_va + i);
     if(pa == 0)
       panic("loadseg: address should exist");
-    if(sz - i < PGSIZE)
-      n = sz - i;
-    else
-      n = PGSIZE;
-    if(readi(ip, 0, (uint64)pa, offset-pg_offset+i, n) != n)
+    // zero the page
+    memset((void*)pa, 0, PGSIZE);
+    // fill the page or until there are no bytes left to write
+    n = (sz < PGSIZE)? sz : PGSIZE;
+    printf("    file offset: 0x%x, load %d bytes\n", offset, n);
+    if(readi(ip, 0, (uint64)pa, offset, n) != n)
       return -1;
+    offset += n;
+    sz -= n;
   }
   
   return 0;
