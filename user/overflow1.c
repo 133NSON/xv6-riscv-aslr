@@ -11,6 +11,7 @@ int main(int argc, char **argv)
 {
     volatile int modified;
     char buffer[64];
+    printf("buf: 0x%x\n", &buffer);
 
     modified = 0;
     gets(buffer, 100);

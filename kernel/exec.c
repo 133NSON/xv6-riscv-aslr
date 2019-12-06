@@ -26,6 +26,7 @@ exec(char *path, char **argv)
   struct secthdr sh;
   pagetable_t pagetable = 0, oldpagetable;
   struct proc *p = myproc();
+  uint64 instr;
 
   begin_op(ROOTDEV);
 
@@ -65,7 +66,6 @@ exec(char *path, char **argv)
     if (!not_dynsym) {
       // found section header for dynamic symbol table
       // read through each dynamic symbol
-      printf("%d bytes\n", sh.entsize);
       for (int sectoff = 0; sectoff < sh.size; sectoff += sh.entsize) {
         int size = readi(
           ip,
@@ -73,11 +73,11 @@ exec(char *path, char **argv)
           (uint64)&symbol,
           sh.offset + sectoff,
           sh.entsize);
-        printf(
-          "sym a:0x%x, b: 0x%x, c: 0x%x\n",
-          symbol.a,
-          symbol.addr,
-          symbol.c);
+        // printf(
+        //   "sym a:0x%x, b: 0x%x, c: 0x%x\n",
+        //   symbol.a,
+        //   symbol.addr,
+        //   symbol.c);
         symboladdrs[currentsymbol++] = symbol.addr;
         if (size != sizeof(struct elfrel))
           goto bad;
@@ -85,6 +85,34 @@ exec(char *path, char **argv)
     }
   }
 
+  // Load program into memory.
+  uint64 load_offset = 0 * PGSIZE; // must be multiple of PGSIZE
+  printf("load offset: 0x%x\n", load_offset);
+
+  uvmalloc(pagetable, 0, load_offset);
+  for(i=0, off=elf.phoff; i<elf.phnum; i++, off+=sizeof(ph)){
+    if(readi(ip, 0, (uint64)&ph, off, sizeof(ph)) != sizeof(ph)) {
+      printf("exec: readi error\n");
+      goto bad;
+    }
+    // ph.vaddr = PGROUNDDOWN(ph.vaddr); // round up vaddr
+    if(ph.type != ELF_PROG_LOAD)
+      continue;
+    if(ph.memsz < ph.filesz) {
+      printf("exec: memsz smaller than filesz error\n");
+      goto bad;
+    }
+    if((sz = uvmalloc(pagetable, sz + load_offset, ph.vaddr + ph.memsz + load_offset)) == 0) {
+      printf("exec: uvmalloc error\n");
+      goto bad;
+    }
+    printf("loading offset 0x%x into vaddr: 0x%x\n", ph.off, ph.vaddr);
+    if(loadseg(pagetable, ph.vaddr + load_offset, ip, ph.off, ph.filesz) < 0) {
+      printf("exec: loadseg error\n");
+      goto bad;
+    }
+  }
+  sz += load_offset;
 
   struct elfrel relocation;
   // Get Section Headers
@@ -105,44 +133,39 @@ exec(char *path, char **argv)
           sh.offset + sectoff,
           sh.entsize);
         printf(
-          "reloc offset:0x%x, type: 0x%x, symbol: 0x%x, addr: 0x%x\n",
+          "reloc offset:0x%x, type: 0x%x, symbol: %d, addr: 0x%x\n",
           relocation.r_offset,
           ELF64_R_TYPE(relocation.r_info),
           ELF64_R_SYM(relocation.r_info),
           symboladdrs[ELF64_R_SYM(relocation.r_info)]);
+        switch (ELF64_R_TYPE(relocation.r_info)) {
+          case R_RISCV_RELATIVE:
+            printf("relative\n");
+            // get instruction from memory
+            if (copyin(pagetable, (char*)&instr, (uint64)relocation.r_offset, 8) != 0)
+              panic("exec: copyin1 relocation");
+            printf("read: 0x%x\n", instr);
+            instr = 0x1010101010101010;
+            // if (copyout(pagetable, (uint64)relocation.r_offset, (char*)&instr, 8) != 0)
+            //   panic("exec: copyout1 relocation");
+            break;
+          case R_RISCV_JUMP_SLOT:
+            printf("jump slot\n");
+            // get instruction from memory
+            instr = 0;
+            if (copyin(pagetable, (char*)&instr, (uint64)relocation.r_offset, 8) != 0)
+              panic("exec: copyin2 relocation");
+            printf("read: 0x%x\n", instr);
+            instr = symboladdrs[ELF64_R_SYM(relocation.r_info)];
+            if (copyout(pagetable, (uint64)relocation.r_offset, (char*)&instr, 8) != 0)
+              panic("exec: copyout2 relocation");
+            break;
+        }
         if (size != sizeof(struct elfrel))
           goto bad;
       }
     }
   }
-
-  // Load program into memory.
-  uint64 load_offset = 0 * PGSIZE; // must be multiple of PGSIZE
-  printf("load offset: 0x%x\n", load_offset);
-
-  uvmalloc(pagetable, 0, load_offset);
-  for(i=0, off=elf.phoff; i<elf.phnum; i++, off+=sizeof(ph)){
-    if(readi(ip, 0, (uint64)&ph, off, sizeof(ph)) != sizeof(ph)) {
-      printf("exec: readi error\n");
-      goto bad;
-    }
-    ph.vaddr = PGROUNDUP(ph.vaddr); // round up vaddr
-    if(ph.type != ELF_PROG_LOAD)
-      continue;
-    if(ph.memsz < ph.filesz) {
-      printf("exec: memsz smaller than filesz error\n");
-      goto bad;
-    }
-    if((sz = uvmalloc(pagetable, sz + load_offset, ph.vaddr + ph.memsz + load_offset)) == 0) {
-      printf("exec: uvmalloc error\n");
-      goto bad;
-    }
-    if(loadseg(pagetable, ph.vaddr + load_offset, ip, ph.off, ph.filesz) < 0) {
-      printf("exec: loadseg error\n");
-      goto bad;
-    }
-  }
-  // sz += load_offset;
   iunlockput(ip);
   end_op(ROOTDEV);
   ip = 0;
@@ -150,10 +173,10 @@ exec(char *path, char **argv)
   p = myproc();
   uint64 oldsz = p->sz;
 
-  // Allocate two pages at the next page boundary.
-  // Use the second as the user stack.
+  // Allocate random number of pages at the next page boundary.
+  // Use the last one as the user stack.
   sz = PGROUNDUP(sz);
-  if((sz = uvmalloc(pagetable, sz, sz + 2*PGSIZE)) == 0)
+  if((sz = uvmalloc(pagetable, sz, sz + random(2, 100)*PGSIZE)) == 0)
     goto bad;
   uvmclear(pagetable, sz-2*PGSIZE);
   sp = sz;

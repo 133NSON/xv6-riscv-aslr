@@ -6,6 +6,7 @@
 
 void func1() {
     char buf[8] = {0};
+    printf("buf addr: 0x%x\n", &buf);
     gets(buf, 80);
 }
 

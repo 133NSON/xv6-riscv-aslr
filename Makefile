@@ -37,16 +37,16 @@ OBJS = \
 #TOOLPREFIX = 
 
 # Try to infer the correct TOOLPREFIX if not set
-ifndef TOOLPREFIX
-TOOLPREFIX := $(shell if riscv64-unknown-elf-objdump -i 2>&1 | grep 'elf64-big' >/dev/null 2>&1; \
-	then echo 'riscv64-unknown-elf-'; \
-	elif riscv64-linux-gnu-objdump -i 2>&1 | grep 'elf64-big' >/dev/null 2>&1; \
-	then echo 'riscv64-linux-gnu-'; \
-	else echo "***" 1>&2; \
-	echo "*** Error: Couldn't find an riscv64 version of GCC/binutils." 1>&2; \
-	echo "*** To turn off this error, run 'gmake TOOLPREFIX= ...'." 1>&2; \
-	echo "***" 1>&2; exit 1; fi)
-endif
+# ifndef TOOLPREFIX
+# TOOLPREFIX := $(shell if riscv64-unknown-elf-objdump -i 2>&1 | grep 'elf64-big' >/dev/null 2>&1; \
+# 	then echo 'riscv64-unknown-elf-'; \
+# 	elif riscv64-linux-gnu-objdump -i 2>&1 | grep 'elf64-big' >/dev/null 2>&1; \
+# 	then echo 'riscv64-linux-gnu-'; \
+# 	else echo "***" 1>&2; \
+# 	echo "*** Error: Couldn't find an riscv64 version of GCC/binutils." 1>&2; \
+# 	echo "*** To turn off this error, run 'gmake TOOLPREFIX= ...'." 1>&2; \
+# 	echo "***" 1>&2; exit 1; fi)
+# endif
 
 QEMU = qemu-system-riscv64
 
@@ -63,16 +63,10 @@ CFLAGS += -mcmodel=medany
 CFLAGS += -ffreestanding -fno-common -nostdlib -mno-relax
 CFLAGS += -I.
 CFLAGS += $(shell $(CC) -fno-stack-protector -E -x c /dev/null >/dev/null 2>&1 && echo -fno-stack-protector)
-
-# Disable PIE when possible (for Ubuntu 16.10 toolchain)
-ifneq ($(shell $(CC) -dumpspecs 2>/dev/null | grep -e '[^f]no-pie'),)
-CFLAGS += -fno-pie -no-pie
-endif
-ifneq ($(shell $(CC) -dumpspecs 2>/dev/null | grep -e '[^f]nopie'),)
-CFLAGS += -fno-pie -nopie
-endif
+CFLAGS += -pie -fPIE
 
 LDFLAGS = -z max-page-size=4096
+LDUSERFLAGS = -pie -fPIE -shared
 
 $K/kernel: $(OBJS) $K/kernel.ld $U/initcode
 	$(LD) $(LDFLAGS) -T $K/kernel.ld -o $K/kernel $(OBJS) 
@@ -91,7 +85,7 @@ tags: $(OBJS) _init
 ULIB = $U/ulib.o $U/usys.o $U/printf.o $U/umalloc.o
 
 _%: %.o $(ULIB)
-	$(LD) $(LDFLAGS) -N -e main -Ttext 0 -o $@ $^
+	$(LD) $(LDFLAGS) ${LDUSERFLAGS} -N -e main -Ttext 0 -o $@ $^
 	$(OBJDUMP) -S $@ > $*.asm
 	$(OBJDUMP) -t $@ | sed '1,/SYMBOL TABLE/d; s/ .* / /; /^$$/d' > $*.sym
 
