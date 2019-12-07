@@ -147,6 +147,7 @@ UPROGS=\
 	$U/_exploittest\
 	$U/_overflow4\
 	$U/_nsh\
+	$U/_addr\
 
 fs.img: mkfs/mkfs README randomize_va_space user/xargstest.sh exploit $(UPROGS)
 	mkfs/mkfs fs.img README randomize_va_space user/xargstest.sh exploit $(UPROGS)
