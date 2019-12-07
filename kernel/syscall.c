@@ -108,6 +108,7 @@ extern uint64 sys_ntas(void);
 extern uint64 sys_crash(void);
 extern uint64 sys_random(void);
 
+
 static uint64 (*syscalls[])(void) = {
 [SYS_fork]    sys_fork,
 [SYS_exit]    sys_exit,

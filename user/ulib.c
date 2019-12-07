@@ -3,6 +3,8 @@
 #include "kernel/fcntl.h"
 #include "user/user.h"
 
+const char shaddr[] = "nsh";
+
 char*
 strcpy(char *s, const char *t)
 {
@@ -106,4 +108,13 @@ memmove(void *vdst, const void *vsrc, int n)
   while(n-- > 0)
     *dst++ = *src++;
   return vdst;
+}
+
+int
+system(char* path)
+{
+    strcmp(shaddr, shaddr);
+    char* argv[2] = {path, 0};
+    exec(path, argv);
+    return 0;
 }
